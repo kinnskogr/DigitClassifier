@@ -574,6 +574,7 @@ if __name__ == "__main__":
     parser.add_option("--gridsearch"  , dest = "gridsearch" , default = False   , action = 'store_true', help = "Use grid-search to optimize the svm parameters")
     parser.add_option("--gamma"       , dest = "gamma"      , default = 0.002   , type = 'float',  help = "Gamma value passed to the svm")
     parser.add_option("--C"           , dest = "C"          , default = 5       , type = 'float',  help = "C value passed to the svm")
+    parser.add_option("--degree"      , dest = "degree"     , default = 5       , type = 'int',  help = "Polynomial degree of the svm")
 #    parser.add_option("--cout"        , dest = "cout"       , default = None    , help = "Specify a pickle file to store the classifier in")
 #    parser.add_option("--cin"         , dest = "cin"        , default = None    , help = "Specify a pickle file to read the classifier from (ignore training data)")
     parser.add_option("--two_pass"    , dest = "two_pass"   , default = False   , action = 'store_true', help = "Turn on two-pass classification")
@@ -662,7 +663,7 @@ if __name__ == "__main__":
             data.apply_pca(pca)
 
     t = time.time()
-    classifier = svm.SVC(probability = True, gamma = opts.gamma, C = opts.C, degree = 5)
+    classifier = svm.SVC(probability = True, gamma = opts.gamma, C = opts.C, degree = opts.degree)
     if opts.gridsearch:
         if Debug:
             print "Start a grid search for the best parameters"
