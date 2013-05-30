@@ -1,10 +1,12 @@
 '''Code for the kaggle.com digit classification competition.
 '''
 
+__author__      = "Emanuel Strauss"
+__email__       = "kinnskogr@gmail.com"
+
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
-from sklearn.cluster import KMeans
 from sklearn import svm, metrics, grid_search
 from sklearn.ensemble import RandomForestClassifier
 import scipy.ndimage as ndimage
@@ -26,30 +28,30 @@ def scat(img):
     y_var  = np.sum(np.power(img, 1) * np.square(y_coord - y_mean))
     xy_var = np.sum(np.power(img, 1) * (x_coord - x_mean) * (y_coord - y_mean))
 
-    scatM = np.array([[x_var, xy_var], [xy_var, y_var]])
-    meanV = np.array([x_mean, y_mean])
+    scattering_matrix = np.array([[x_var, xy_var], [xy_var, y_var]])
+    mean_vector = np.array([x_mean, y_mean])
     
-    return scatM, meanV
+    return scattering_matrix, mean_vector
 
-def paxis(scatM):
+def paxis(scattering_matrix):
     '''Calculate the principal axis values from the scattering matrix'''
 
-    if scatM.shape != (2, 2):
-        print "ERROR: getPrincipleAxes(scatM), scatM size is not 2x2"
+    if scattering_matrix.shape != (2, 2):
+        print "ERROR: getPrincipleAxes(scattering_matrix), scattering_matrix size is not 2x2"
         return
 
     #(a + d - sqrt((a+d)**2 - 4(a*d-c*b)))/2                                                                                                                                    
     #a*x*x + b*x + c = 0 --> -b/2 +- sqrt(b*b-4*a*c)                                                                                                                            
     #-(a+d)x + x*x - det(ABCD) = 0                                                                                                                                              
-    sol1 = 0.5*(scatM[0, 0]+scatM[1, 1]) + 0.5*math.sqrt( math.pow((scatM[0, 0]+scatM[1, 1]), 2) - 4*(scatM[0, 0]*scatM[1, 1] - scatM[0, 1]*scatM[1, 0]) )
-    sol2 = 0.5*(scatM[0, 0]+scatM[1, 1]) - 0.5*math.sqrt( math.pow((scatM[0, 0]+scatM[1, 1]), 2) - 4*(scatM[0, 0]*scatM[1, 1] - scatM[0, 1]*scatM[1, 0]) )
+    sol1 = 0.5*(scattering_matrix[0, 0]+scattering_matrix[1, 1]) + 0.5*math.sqrt( math.pow((scattering_matrix[0, 0]+scattering_matrix[1, 1]), 2) - 4*(scattering_matrix[0, 0]*scattering_matrix[1, 1] - scattering_matrix[0, 1]*scattering_matrix[1, 0]) )
+    sol2 = 0.5*(scattering_matrix[0, 0]+scattering_matrix[1, 1]) - 0.5*math.sqrt( math.pow((scattering_matrix[0, 0]+scattering_matrix[1, 1]), 2) - 4*(scattering_matrix[0, 0]*scattering_matrix[1, 1] - scattering_matrix[0, 1]*scattering_matrix[1, 0]) )
 
 
-    den1 = math.sqrt( 1 + math.pow( ((sol1 - scatM[0, 0])/scatM[0, 1]), 2) )
-    vec1 = np.array([1.0/den1, ((sol1 - scatM[0, 0])/scatM[0, 1]) / den1])
+    den1 = math.sqrt( 1 + math.pow( ((sol1 - scattering_matrix[0, 0])/scattering_matrix[0, 1]), 2) )
+    vec1 = np.array([1.0/den1, ((sol1 - scattering_matrix[0, 0])/scattering_matrix[0, 1]) / den1])
 
-    den2 = math.sqrt( 1 + math.pow( ((sol2 - scatM[0, 0])/scatM[0, 1]), 2) )
-    vec2 = np.array([1.0/den2, ((sol2 - scatM[0, 0])/scatM[0, 1]) / den2])
+    den2 = math.sqrt( 1 + math.pow( ((sol2 - scattering_matrix[0, 0])/scattering_matrix[0, 1]), 2) )
+    vec2 = np.array([1.0/den2, ((sol2 - scattering_matrix[0, 0])/scattering_matrix[0, 1]) / den2])
 
     V = np.zeros( (2, 2) )
     S = np.array([0, 0])
@@ -74,12 +76,11 @@ def rotate_image(img):
     else:
         dim = img.shape[0]
 
-    scatM, meanV = scat(img.reshape(dim, dim))
+    scattering_matrix, mean_vector = scat(img.reshape(dim, dim))
 
-    V, S = paxis(scatM)
+    V, S = paxis(scattering_matrix)
 
     stheta = V[0, 0]
-    ctheta = V[0, 1]
 
     rot_img =  ndimage.interpolation.rotate(img.reshape(dim, dim), math.asin(stheta) * 360 / (2*math.pi), reshape = False)
 
@@ -101,7 +102,7 @@ def construct_averages(images, labels):
 
         try:
             average = np.sum(collection, axis = 0) / len(collection)
-        except:
+        except: ## Bad form, but there are lots of ways this can fail and I don't care about any of them
             average = np.array([])
         
         output.append(average)
@@ -115,9 +116,9 @@ def edge_laplacian(images):
     output = []
     dim = np.sqrt(images.shape[1])
     for image in images.reshape(len(images), dim, dim):
-        ck = signal.cspline2d(image, 8.0, 1.0)
+        ck_spline = signal.cspline2d(image, 8.0, 1.0)
         laplacian = np.array([[0, 1, 0], [1, -4, 1], [0, 1, 0]], np.float32)
-        deriv2 = signal.convolve2d(ck, laplacian, mode = 'same', boundary = 'symm')
+        deriv2 = signal.convolve2d(ck_spline, laplacian, mode = 'same', boundary = 'symm')
         output.append(deriv2)
         
     return np.array(output, dtype = float).reshape(len(images), -1)
@@ -209,8 +210,8 @@ def check_mistakes(data):
 
     f_bad = sorted([(i, float(sum(data.predicted[data.labels == i] == i)) / len(data.predicted[data.labels == i])) for i in range(10)], key = lambda x:x[1])
     print "In order of performance:"
-    for i, f in f_bad:
-        print "%d %f" % (i, f)
+    for i, frac in f_bad:
+        print "%d %f" % (i, frac)
 
     badimages = data.orig[data.labels != data.predicted]
     badlabels  = data.labels[data.labels != data.predicted]
@@ -221,11 +222,11 @@ def check_mistakes(data):
     bad_averages = construct_averages(badimages, badlabels)
     plot_array(bad_averages, plot_name = data.name + "_bad_averages")
 
-    bad_prob = np.max(data._prob[data.labels != data.predicted], axis = 1)
-    good_prob = np.max(data._prob[data.labels == data.predicted], axis = 1)
+    bad_prob = np.max(data.prob[data.labels != data.predicted], axis = 1)
+    good_prob = np.max(data.prob[data.labels == data.predicted], axis = 1)
     
     h_good, bin_edges = np.histogram(good_prob, bins = 20)
-    h_bad, bin_Edges = np.histogram(bad_prob, bins = bin_edges)
+    h_bad, bin_edges = np.histogram(bad_prob, bins = bin_edges)
 
     bins = (bin_edges[:-1] + bin_edges[1:]) / 2
 
@@ -242,7 +243,7 @@ def check_mistakes(data):
     ax.set_title(data.name + "_fractions")
     ax.set_yscale('log')
     answers = data.predicted == data.labels
-    probs = np.max(data._prob, axis = 1)
+    probs = np.max(data.prob, axis = 1)
     xaxis = np.array(range(0, 101, 1), dtype = float) / 100
     sums = np.array([len(answers[(probs <= i)]) for i in xaxis], dtype = float) / len(answers)
     good = np.array([len(answers[(probs <= i) & (answers == True)]) for i in xaxis], dtype = float) / len(answers)
@@ -252,53 +253,52 @@ def check_mistakes(data):
     plt.plot(xaxis, bad, 'r')
     plt.savefig(data.name + '_fractions.png')
 
-def makeXYScatterMatrix(image, pow_forScat = 1, pow_forMean = 1):
-    cell_values = np.array([i for i in image])
+def make_xy_scatter_matrix(image):
+    '''Calculate the scatter matrix (i.e. the X,Y covariance matrix)'''
+
+    cell_values = np.array([val for val in image])
     cell_x      = np.array([range(np.sqrt(len(image)))])
     cell_y      = np.array([range(np.sqrt(len(image)))])
 
-    x_off = (np.max(cell_x) + np.min(cell_x))/2
-    y_off = (np.max(cell_y) + np.min(cell_y))/2
+    itot = np.sum(cell_values)
+    if itot == 0:
+        raise ValueError('This image is blank?!')
 
-    etot = np.sum((cell_values>0) * np.power(cell_values, pow_forMean))
-    if etot == 0:
-        print 'Found a jet with no energy.  DYING!'
-        sys.exit(1)
+    x_mean  = np.sum(cell_values * cell_x)/itot
+    y_mean  = np.sum(cell_values * cell_y)/itot
+    x_var  = np.sum(cell_values * np.square(cell_x - x_mean))
+    y_var  = np.sum(cell_values * np.square(cell_y - y_mean))
+    xy_var   = np.sum(cell_values * (cell_x - x_mean)*(cell_y -y_mean))
 
-    x_1  = np.sum((cell_values>0) * np.power(cell_values, pow_forMean) * cell_x)/etot
-    y_1  = np.sum((cell_values>0) * np.power(cell_values, pow_forMean) * cell_y)/etot
-    x_2  = np.sum((cell_values>0) * np.power(cell_values, pow_forScat) * np.square(cell_x -x_1))
-    y_2  = np.sum((cell_values>0) * np.power(cell_values, pow_forScat) * np.square(cell_y -y_1))
-    xy   = np.sum((cell_values>0) * np.power(cell_values, pow_forScat) * (cell_x - x_1)*(cell_y -y_1))
+    scattering_matrix = np.array([[x_var, xy_var], [xy_var, y_var]])
+    mean_vector = np.array([x_mean, y_mean])
 
-    scatM = np.array([[x_2, xy], [xy, y_2]])
-    meanV = np.array([x_1, y_1])
-
-    return scatM, meanV
+    return scattering_matrix, mean_vector
 
 class Classifers:
-    def __init__():
+    '''Handle the details of multiple classifier types, expose a single interface. TOD: Basically, everything'''
+    def __init__(self):
         self.clf = {}
         self.config = {}
 
-    def train_svm(data, **args):
+    def train_svm(self, data, **opts):
         t = time.time()
-        clf = svm.SVC(probability = True, **args)
+        clf = svm.SVC(probability = True, **opts)
         clf.fit(data.images, data.labels)
         
         self.clf["svm"] = clf
-        self.config["svm"] = data._config
+        self.config["svm"] = data.config
 
         if Debug:
             print "Trained svm in %d seconds" % (time.time() - t)
     
-    def train_rf(data, **args):
+    def train_rf(self, data, **opts):
         t = time.time()
-        clf = RandomForestClassifier(verbose = 1, **args)
+        clf = RandomForestClassifier(verbose = 1, **opts)
         clf.fit(data.images, data.labels)
         
         self.clf["rf"] = clf
-        self.config["rf"] = data._config
+        self.config["rf"] = data.config
 
         if Debug:
             print "Trained rf in %d seconds" % (time.time() - t)    
@@ -306,18 +306,30 @@ class Classifers:
     
 
 class ImgData:
+    '''Ship all the image components in a pretty little box. Keep
+    track of metadata. Handle the common image processing operations.
+    '''
+
     def __init__(self, name, config = ""):
         self.orig      = np.array([])
         self.images    = np.array([])
         self.labels    = np.array([])
         self.predicted = np.array([])
         self.name      = name
-        self._config    = config
+        self.config    = config
 
     def __len__(self):
         return len(self.orig)
 
     def preprocess(self, **opts):
+        '''Transform the original list of images and store as a new
+        list of images. Available options are:
+        
+        counts -- If True will add a sum of cells above 0, once across the columns and once across the rows.
+        rotate -- If True will interpolate and rotate the images to align the principal axis along the vertical.
+        edges  -- If 'edges' will apply edge detection. If 'merged' will append the transformed image, rather than replacing it.
+        '''
+
         self.images = self.orig
         if self.images.shape[0] == 0:
             return
@@ -326,8 +338,6 @@ class ImgData:
             t = time.time()
             dim = np.sqrt(self.orig.shape[1]) if len(self.orig.shape) == 2 else self.orig.shape[2]
             counts = np.column_stack([np.sum(self.orig.reshape(len(self.images), dim, dim) != 0, axis = 1), np.sum(self.orig.reshape(len(self.images), dim, dim) != 0, axis = 2)])
-            cmax = np.max(counts)
-            cmin = np.min(counts)
             if Debug:
                 print "Adding counts took %d seconds" % (time.time() - t)
             
@@ -354,23 +364,26 @@ class ImgData:
         if opts.get('counts', False) == True:
             if Debug:
                 print "Adding a row of counts"
-            #feature scaling
-            #counts = (counts - cmin) * (np.max(self.images) - np.min(self.images)) / (cmax - cmin)
             self.images = np.column_stack([self.images, counts.reshape(len(counts), -1)])
 
-        pass
-
-    def scale(self, scaler):
+    def scale(self, scaler = None):
+        '''Apply a pre-computed scalling transformation if scaler is
+        passed. Otherwise, center each image to the mean with unit
+        variance'''
+        
         shape = self.images.shape
         if shape[0] == 0:
             return
 
-        #self.images = scaler.transform(self.images.reshape(shape[0], -1), axis = 1)
-        from sklearn import preprocessing
-        self.images = preprocessing.scale(self.images.reshape(shape[0], -1), axis = 1)
+        if scaler:
+            self.images = scaler.transform(self.images.reshape(shape[0], -1))
+        else:
+            from sklearn import preprocessing
+            self.images = preprocessing.scale(self.images.reshape(shape[0], -1), axis = 1)
         self.images = self.images.reshape(shape)
 
     def apply_pca(self, pca):
+        '''Transform the images along the principal components'''
         if self.images.shape[0] == 0:
             return
         
@@ -384,17 +397,17 @@ class ImgData:
         images = []
         labels = []
         for line in open(fname).readlines():
-            l = line.split(",")
-            if l[0] == 'label':
+            line = line.split(",")
+            if line[0] == 'label':
                 idx_start = 1
                 continue
-            if l[0] == 'pixel0':
+            if line[0] == 'pixel0':
                 idx_start = 0
                 continue
-            l = [float(i) for i in l]
+            line = [float(val) for val in line]
             
-            image = l[idx_start:]
-            label = -1 if idx_start == 0 else l[0]
+            image = line[idx_start:]
+            label = -1 if idx_start == 0 else line[0]
 
             images.append(image)
             labels.append(label)
@@ -405,8 +418,7 @@ class ImgData:
             
         self.orig = np.array(images, dtype = float)
         self.labels = np.array(labels, dtype = int)
-        self._config += "csv = %s;" % fname
-        pass
+        self.config += "csv = %s;" % fname
     
     def read_mnist(self, fname):
         '''Read the MNIST ubyte data-format and return a numpy array'''
@@ -441,15 +453,15 @@ class ImgData:
         elif len(result.shape) == 2:
             #Labels are stored as tuples
             self.labels = np.array(result, dtype = int)
-        pass
-        self._config += ", mnist = %s" % fname
+        self.config += ", mnist = %s" % fname
     
 
     def plot_image(self, idx):
+        '''Visualize the image at position idx'''
         plot_figure(self.images[idx])
-        pass
 
     def plot_avgimages(self, status = 'processed'):
+        '''Average the images by label and visualize on a grid'''
         dim_x = np.sqrt(self.orig.shape[1])
         dim_y = np.sqrt(self.orig.shape[1])
         if status == 'processed':
@@ -465,16 +477,19 @@ class ImgData:
         plot_array(averages.reshape(l, dim_x, dim_y), plot_name = self.name + "_averages_" + status)
 
     def accuracy(self):
+        '''Calculate the prediction accuracy (n predicted right / total)'''
         return sum(self.labels == self.predicted) / len(self.labels)
 
     def bad_indices(self):
+        '''Return the a vector for selecting mis-classified images'''
         return self.labels != self.predicted
 
     def badimages(self):
+        '''Return a list of mis-classified images and their correct labels'''
         ids = self.bad_indices()
         return self.images[ids], self.labels[ids]
 
-    def subset(self, **args):
+    def subset(self, **opts):
         '''Return an ImgData object containing a subset of the data,
         valid arguments are:
         start - the 1st id in a range
@@ -483,22 +498,22 @@ class ImgData:
         vals  - a list of true/false values
         '''
 
-        output = ImgData(self.name, self._config + str(args) + ";")
-        if 'start' in args and 'end' not in args:
-            args['end'] = len(self.labels)
-        if 'end' in args and 'start' not in args:
-            args['start'] = 0
+        output = ImgData(self.name, self.config + str(opts) + ";")
+        if 'start' in opts and 'end' not in opts:
+            opts['end'] = len(self.labels)
+        if 'end' in opts and 'start' not in opts:
+            opts['start'] = 0
 
-        if 'start' in args and 'end' in args:
-            output.orig = self.orig[args['start']:args['end']]
-            output.labels = self.labels[args['start']:args['end']]
+        if 'start' in opts and 'end' in opts:
+            output.orig = self.orig[opts['start']:opts['end']]
+            output.labels = self.labels[opts['start']:opts['end']]
             if len(self.images) > 0:
-                output.images = self.images[args['start']:args['end']]
+                output.images = self.images[opts['start']:opts['end']]
             if len(self.predicted) > 0:
-                output.predicted = self.predicted[args['start']:args['end']]
+                output.predicted = self.predicted[opts['start']:opts['end']]
         
-        if 'ids' in args:
-            ids = args['ids']
+        if 'ids' in opts:
+            ids = opts['ids']
             ids = np.array([i in ids for i in range(len(self.orig))])
             output.orig = self.orig[ids]
             output.labels = self.labels[ids]
@@ -508,8 +523,8 @@ class ImgData:
                 output.predicted = self.predicted[ids]
 
 
-        if 'vals' in args:
-            vals = args['vals']
+        if 'vals' in opts:
+            vals = opts['vals']
             output.orig = self.orig[vals]
             output.labels = self.labels[vals]
             if len(self.images) > 0:
@@ -520,15 +535,19 @@ class ImgData:
         return output
 
 class Scaler:
+    '''Helper class to hide the details of the scaling'''
+
     def __init__(self):
         self.transform = None
 
-    def train_minmax(self, data, minVal = -1, maxVal = 1):
-        curMin = np.min(data.images)
-        curMax = np.max(data.images)
-        self.transform = lambda x: (x - curMin) * (maxVal - minVal) / (curMax - curMin)
+    def train_minmax(self, data, min_val = -1, max_val = 1):
+        '''Figure out the range of the samples'''
+        cur_min = np.min(data.images)
+        cur_max = np.max(data.images)
+        self.transform = lambda x: (x - cur_min) * (max_val - min_val) / (cur_max - cur_min)
 
     def train_scaler(self, data):
+        '''Work out the mean and variance of the samples'''
         from sklearn import preprocessing
         scaler = preprocessing.Scaler().fit(data.images)
         self.transform = scaler.transform        
@@ -542,24 +561,24 @@ if __name__ == "__main__":
     print " ".join(sys.argv)
 
     parser = OptionParser()
-    parser.add_option("--train_csv"   , dest = "train_csv"  , default = None   , help = "read training data from a csv file")
-    parser.add_option("--final_csv"   , dest = "final_csv"  , default = None   , help = "read final data to classify from a csv file")
-    parser.add_option("--train_mnist" , dest = "train_mnist", default = None   , help = "read the training data from a pair of ubyte files (comma seperated)")
-    parser.add_option("--n_train"     , dest = "n_train"    , default = 15000  , type = 'int'  , help = "number of training events to use for training")
-    parser.add_option("--n_test"      , dest = "n_test"     , default = 15000  , type = 'int'  , help = "number of training events to use for testing (bounded by n_train)")
-    parser.add_option("--scale"       , dest = "scale"      , default = 'scale' , help = "What scaling to apply: scale uses scikit learn scaler, minmax enforces a range from 0 to 1")    
-    parser.add_option("--pca"         , dest = "pca"        , default = -1     , type = 'float', help = "Use PCA to reduce the dimensionality, value sets the minimum fraction of variance explained by the components used")
-    parser.add_option("--edges"       , dest = "edges"      , default = "orig" , help = "Use original image (orig), edge detection (edges), or a combination of both (merged)")
-    parser.add_option("--counts"      , dest = "counts"     , default = False  , action = 'store_true', help = "Add a set of features to the image, listing the number of non-zero pixels")
-    parser.add_option("--rotate"      , dest = "rotate"     , default = False  , action = 'store_true', help = "Interpolate and then rotate the images along their principal axis")    
-    parser.add_option("--gridsearch"  , dest = "gridsearch" , default = False  , action = 'store_true', help = "Use grid-search to optimize the svm parameters")
-    parser.add_option("--gamma"       , dest = "gamma"      , default = 0.002  , type = 'float',  help = "Gamma value passed to the svm")
-    parser.add_option("--C"           , dest = "C"          , default = 5      , type = 'float',  help = "C value passed to the svm")
-#    parser.add_option("--cout"        , dest = "cout"       , default = None  , help = "Specify a pickle file to store the classifier in")
-#    parser.add_option("--cin"         , dest = "cin"        , default = None  , help = "Specify a pickle file to read the classifier from (ignore training data)")
-    parser.add_option("--two_pass"    , dest = "two_pass"   , default = False  , action = 'store_true', help = "Turn on two-pass classification")
-    parser.add_option("--plots"       , dest = "plots"      , default = False  , action = 'store_true', help = "Turn on additional plotting")
-    parser.add_option("--debug"       , dest = "debug"      , default = False  , action = 'store_true', help = "Turn on debugging printouts")
+    parser.add_option("--train_csv"   , dest = "train_csv"  , default = None    , help = "read training data from a csv file")
+    parser.add_option("--final_csv"   , dest = "final_csv"  , default = None    , help = "read final data to classify from a csv file")
+    parser.add_option("--train_mnist" , dest = "train_mnist", default = None    , help = "read the training data from a pair of ubyte files (comma seperated)")
+    parser.add_option("--n_train"     , dest = "n_train"    , default = 15000   , type = 'int'  , help = "number of training events to use for training")
+    parser.add_option("--n_test"      , dest = "n_test"     , default = 15000   , type = 'int'  , help = "number of training events to use for testing (bounded by n_train)")
+    parser.add_option("--scale"       , dest = "scale"      , default = "scale" , help = "What scaling to apply: scale centers the mean and variance per image, sample uses scikit learn scaler, minmax enforces a range from 0 to 1")    
+    parser.add_option("--pca"         , dest = "pca"        , default = -1      , type = 'float', help = "Use PCA to reduce the dimensionality, value sets the minimum fraction of variance explained by the components used")
+    parser.add_option("--edges"       , dest = "edges"      , default = "orig"  , help = "Use original image (orig), edge detection (edges), or a combination of both (merged)")
+    parser.add_option("--counts"      , dest = "counts"     , default = False   , action = 'store_true', help = "Add a set of features to the image, listing the number of non-zero pixels")
+    parser.add_option("--rotate"      , dest = "rotate"     , default = False   , action = 'store_true', help = "Interpolate and then rotate the images along their principal axis")    
+    parser.add_option("--gridsearch"  , dest = "gridsearch" , default = False   , action = 'store_true', help = "Use grid-search to optimize the svm parameters")
+    parser.add_option("--gamma"       , dest = "gamma"      , default = 0.002   , type = 'float',  help = "Gamma value passed to the svm")
+    parser.add_option("--C"           , dest = "C"          , default = 5       , type = 'float',  help = "C value passed to the svm")
+#    parser.add_option("--cout"        , dest = "cout"       , default = None    , help = "Specify a pickle file to store the classifier in")
+#    parser.add_option("--cin"         , dest = "cin"        , default = None    , help = "Specify a pickle file to read the classifier from (ignore training data)")
+    parser.add_option("--two_pass"    , dest = "two_pass"   , default = False   , action = 'store_true', help = "Turn on two-pass classification")
+    parser.add_option("--plots"       , dest = "plots"      , default = False   , action = 'store_true', help = "Turn on additional plotting")
+    parser.add_option("--debug"       , dest = "debug"      , default = False   , action = 'store_true', help = "Turn on debugging printouts")
 
     (opts, args) = parser.parse_args()
     
@@ -621,12 +640,12 @@ if __name__ == "__main__":
         data.preprocess(**preprocess_opts)
 
     scaler = Scaler()
-    if opts.scale == "scale":
+    if opts.scale == "sample":
         scaler.train_scaler(training_data)
     elif opts.scale == "minmax":
         scaler.train_minmax(training_data, 0, 1)
     else:
-        scaler = lambda x: x
+        scaler = None
 
     for data in (training_data, testing_data, final_data):
         data.scale(scaler)
@@ -674,9 +693,9 @@ if __name__ == "__main__":
 
     if opts.two_pass:
         # training_data.predicted = classifier.predict(training_data.images)
-        # training_data._prob = classifier.predict_proba(training_data.images)
+        # training_data.prob = classifier.predict_proba(training_data.images)
     
-        # unsure_data = training_data.subset(vals = np.array(np.max(training_data._prob, axis = 1) < 0.9))
+        # unsure_data = training_data.subset(vals = np.array(np.max(training_data.prob, axis = 1) < 0.9))
         t = time.time()
         if Debug:
             print "Training two-pass classifier"
@@ -694,8 +713,8 @@ if __name__ == "__main__":
         if Debug:
             print "Fitting RF took %d seconds" % (time.time() - t)
             
-        predicted2 = classifier2.predict(unsure_data.images)            
-        print "Accuracy in unsure sample %f" % (sum(predicted2 == unsure_data.labels) / float(len(unsure_data.labels)))
+        # predicted2 = classifier2.predict(unsure_data.images)            
+        # print "Accuracy in unsure sample %f" % (sum(predicted2 == unsure_data.labels) / float(len(unsure_data.labels)))
         
 
     
@@ -710,7 +729,7 @@ if __name__ == "__main__":
         if len(data.images) == 0:
             continue
         data.predicted = classifier.predict(data.images)
-        data._prob = classifier.predict_proba(data.images)
+        data.prob = classifier.predict_proba(data.images)
 
         if Debug:
             print "Accuracy: %f" % (sum(data.predicted == data.labels) / float(len(data.labels)))
@@ -727,9 +746,9 @@ if __name__ == "__main__":
             predicted2 = classifier2.predict(data.images)
             prob2 = classifier2.predict_proba(data.images)
 
-            data._prob1 = data._prob
+            data.prob1 = data.prob
             data.predicted1 = data.predicted
-            data._prob2 = prob2
+            data.prob2 = prob2
             data.predicted2 = predicted2
             
 
@@ -740,9 +759,9 @@ if __name__ == "__main__":
 
             nreplacements = 0
             for i in xrange(len(data)):
-                if np.max(data._prob[i]) < 0.9 and np.max(prob2[i]) > np.max(data._prob[i]):
+                if np.max(data.prob[i]) < 0.9 and np.max(prob2[i]) > np.max(data.prob[i]):
                     data.predicted[i] = predicted2[i]
-                    data._prob[i] = prob2[i]
+                    data.prob[i] = prob2[i]
                     nreplacements += 1
 
             if Debug:
