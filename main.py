@@ -4,7 +4,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
-from sklearn.lda import LDA
 from sklearn.cluster import KMeans
 from sklearn import svm, metrics, grid_search
 from sklearn.ensemble import RandomForestClassifier
@@ -82,9 +81,9 @@ def rotate_image(img):
     stheta = V[0, 0]
     ctheta = V[0, 1]
 
-    rot_img =  ndimage.interpolation.rotate(img, math.asin(stheta) * 360 / (2*math.pi), reshape = False)
+    rot_img =  ndimage.interpolation.rotate(img.reshape(dim, dim), math.asin(stheta) * 360 / (2*math.pi), reshape = False)
 
-    return rot_img
+    return rot_img.reshape(-1)
     
 
 def construct_averages(images, labels):
@@ -92,10 +91,11 @@ def construct_averages(images, labels):
     normalize by total cell intensity'''
 
     output = []
-    if images.shape[0] == 0: return output
+    if images.shape[0] == 0: 
+        return output
     
-    for i in xrange(10):
-        collection = images[labels == i]
+    for num in xrange(10):
+        collection = images[labels == num]
         if collection.shape[0] == 0:
             output.append(np.array([]))
 
@@ -108,12 +108,13 @@ def construct_averages(images, labels):
     return output
 
 def edge_laplacian(images):
-    from scipy import signal, misc
+    '''Do edge detection'''
+
+    from scipy import signal
 
     output = []
     dim = np.sqrt(images.shape[1])
     for image in images.reshape(len(images), dim, dim):
-        derfilt = np.array([1.0, -2, 1.0], float)
         ck = signal.cspline2d(image, 8.0, 1.0)
         laplacian = np.array([[0, 1, 0], [1, -4, 1], [0, 1, 0]], np.float32)
         deriv2 = signal.convolve2d(ck, laplacian, mode = 'same', boundary = 'symm')
@@ -122,7 +123,7 @@ def edge_laplacian(images):
     return np.array(output, dtype = float).reshape(len(images), -1)
 
 
-def plot_figure(image, ax = None, scaler = None):
+def plot_figure(image, ax = None):
     '''Draw a 2D representation of an array'''
 
     elements = image
@@ -138,9 +139,6 @@ def plot_figure(image, ax = None, scaler = None):
     else:
         dim = elements.shape[0]
 
-    if scaler:
-        elements = scaler.transform(elements)
-
     if ax == None:
         ax = plt.figure()
 
@@ -153,32 +151,42 @@ def plot_figure(image, ax = None, scaler = None):
     return output
         
 
-def plot_array(images, scaler = None, name = ""):
+def plot_array(images, plot_name = ""):
+    '''Take a list of images and plot them on a grid'''
+
     if Debug:
         print "Plot array of %d categories" % len(images)
+
     dim_y = int(np.sqrt(len(images)))
     dim_x = dim_y + (dim_y != np.sqrt(len(images)))
-    ax = plt.figure(name)
-    if name != "":
-        ax.set_label(name)
-    for i in xrange(len(images)):
-        ax.add_subplot(dim_y, dim_x, i+1)
-        fig = plot_figure(images[i], ax = ax, scaler = scaler)
+    ax = plt.figure(plot_name)
 
-    plt.savefig(name + ".png")
+    if plot_name != "":
+        ax.set_label(plot_name)
+
+    for img_idx in xrange(len(images)):
+        ax.add_subplot(dim_y, dim_x, img_idx+1)
+        plot_figure(images[img_idx], ax = ax)
+
+    plt.savefig(plot_name + ".png")
         
 
-def run_pca(images, n = 0):
-    if n == 0:
-        n = images.shape[1]
+def run_pca(images, n_components = 0):
+    '''Seed the PCA class'''
+    if n_components == 0:
+        n_components = images.shape[1]
 
-    pca = PCA(n_components = n, whiten = False)
+    pca = PCA(n_components = n_components, whiten = False)
     pca.fit(images)
     return pca
 
 def explore_pca(images):
+    '''Work out the variance explained by the PCA components, return
+    the PCA object and the results for four operating points (90%,
+    95%, 99%, and 99.9%)'''
+
     pca = run_pca(images, images.shape[1])
-    frac_var_explained = [sum(pca.explained_variance_ratio_[:i]) for i in range(len(pca.explained_variance_ratio_))]
+    frac_var_explained = [sum(pca.explained_variance_ratio_[:comp_idx]) for comp_idx in range(len(pca.explained_variance_ratio_))]
     plt.figure()
     plt.plot(range(len(frac_var_explained)), frac_var_explained)
 
@@ -192,46 +200,29 @@ def explore_pca(images):
     return pca, output
     
 
-def explore_lda(images):
-    lda = LDA(n_components == images.shape[1])
-    lda.fit(images)
-    frac_var_explained = [sum(lda.explained_variance_ratio_[:i]) for i in range(len(lda.explained_variance_ratio_))]
-    plt.figure()
-    plt.plot(range(len(frac_var_explained)), frac_var_explained)
-
-    import bisect
-    output = {}
-    for var in (0.9, 0.95, 0.99, 0.999):
-        n_components = bisect.bisect(frac_var_explained, var)
-        print "%f variance explained by %d components" % (var, n_components)
-        output[var] = n_components
-
-    return lda, output
-
-
 def check_mistakes(data):
     '''Look at the average values for mis-labeled predictions'''
 
     for i in range(10):
-        f_bad = float(sum(data._predicted[data._labels == i] == i)) / len(data._predicted[data._labels == i])
+        f_bad = float(sum(data.predicted[data.labels == i] == i)) / len(data.predicted[data.labels == i])
         print "%f mis-classified for %d" % (f_bad, i)
 
-    f_bad = sorted([(i, float(sum(data._predicted[data._labels == i] == i)) / len(data._predicted[data._labels == i])) for i in range(10)], key = lambda x:x[1])
+    f_bad = sorted([(i, float(sum(data.predicted[data.labels == i] == i)) / len(data.predicted[data.labels == i])) for i in range(10)], key = lambda x:x[1])
     print "In order of performance:"
     for i, f in f_bad:
         print "%d %f" % (i, f)
 
-    bad_images = data._orig[data._labels != data._predicted]
-    bad_labels  = data._labels[data._labels != data._predicted]
+    badimages = data.orig[data.labels != data.predicted]
+    badlabels  = data.labels[data.labels != data.predicted]
 
-    if bad_images.shape[0] == 0:
+    if badimages.shape[0] == 0:
         return
 
-    bad_averages = construct_averages(bad_images, bad_labels)
-    plot_array(bad_averages, name = data._name + "_bad_averages")
+    bad_averages = construct_averages(badimages, badlabels)
+    plot_array(bad_averages, plot_name = data.name + "_bad_averages")
 
-    bad_prob = np.max(data._prob[data._labels != data._predicted], axis = 1)
-    good_prob = np.max(data._prob[data._labels == data._predicted], axis = 1)
+    bad_prob = np.max(data._prob[data.labels != data.predicted], axis = 1)
+    good_prob = np.max(data._prob[data.labels == data.predicted], axis = 1)
     
     h_good, bin_edges = np.histogram(good_prob, bins = 20)
     h_bad, bin_Edges = np.histogram(bad_prob, bins = bin_edges)
@@ -240,17 +231,17 @@ def check_mistakes(data):
 
     fig = plt.figure()
     ax = fig.add_subplot(1, 1, 1)
-    ax.set_title(data._name + "_sums")
+    ax.set_title(data.name + "_sums")
     ax.set_yscale('log')
     plt.plot(bins, h_good, 'bo')
     plt.plot(bins, h_bad, 'ro')
-    plt.savefig(data._name + '_sums.png')
+    plt.savefig(data.name + '_sums.png')
 
     fig = plt.figure()
     ax = fig.add_subplot(1, 1, 1)
-    ax.set_title(data._name + "_fractions")
+    ax.set_title(data.name + "_fractions")
     ax.set_yscale('log')
-    answers = data._predicted == data._labels
+    answers = data.predicted == data.labels
     probs = np.max(data._prob, axis = 1)
     xaxis = np.array(range(0, 101, 1), dtype = float) / 100
     sums = np.array([len(answers[(probs <= i)]) for i in xaxis], dtype = float) / len(answers)
@@ -259,7 +250,7 @@ def check_mistakes(data):
     plt.plot(xaxis, sums, 'b')
     plt.plot(xaxis, good, 'g')
     plt.plot(xaxis, bad, 'r')
-    plt.savefig(data._name + '_fractions.png')
+    plt.savefig(data.name + '_fractions.png')
 
 def makeXYScatterMatrix(image, pow_forScat = 1, pow_forMean = 1):
     cell_values = np.array([i for i in image])
@@ -293,7 +284,7 @@ class Classifers:
     def train_svm(data, **args):
         t = time.time()
         clf = svm.SVC(probability = True, **args)
-        clf.fit(data._images, data._labels)
+        clf.fit(data.images, data.labels)
         
         self.clf["svm"] = clf
         self.config["svm"] = data._config
@@ -304,7 +295,7 @@ class Classifers:
     def train_rf(data, **args):
         t = time.time()
         clf = RandomForestClassifier(verbose = 1, **args)
-        clf.fit(data._images, data._labels)
+        clf.fit(data.images, data.labels)
         
         self.clf["rf"] = clf
         self.config["rf"] = data._config
@@ -316,25 +307,25 @@ class Classifers:
 
 class ImgData:
     def __init__(self, name, config = ""):
-        self._orig      = np.array([])
-        self._images    = np.array([])
-        self._labels    = np.array([])
-        self._predicted = np.array([])
-        self._name      = name
+        self.orig      = np.array([])
+        self.images    = np.array([])
+        self.labels    = np.array([])
+        self.predicted = np.array([])
+        self.name      = name
         self._config    = config
 
     def __len__(self):
-        return len(self._orig)
+        return len(self.orig)
 
     def preprocess(self, **opts):
-        self._images = self._orig
-        if self._images.shape[0] == 0:
+        self.images = self.orig
+        if self.images.shape[0] == 0:
             return
 
         if opts.get('counts', False) == True:
             t = time.time()
-            dim = np.sqrt(self._orig.shape[1]) if len(self._orig.shape) == 2 else self._orig.shape[2]
-            counts = np.column_stack([np.sum(self._orig.reshape(len(self._images), dim, dim) != 0, axis = 1), np.sum(self._orig.reshape(len(self._images), dim, dim) != 0, axis = 2)])
+            dim = np.sqrt(self.orig.shape[1]) if len(self.orig.shape) == 2 else self.orig.shape[2]
+            counts = np.column_stack([np.sum(self.orig.reshape(len(self.images), dim, dim) != 0, axis = 1), np.sum(self.orig.reshape(len(self.images), dim, dim) != 0, axis = 2)])
             cmax = np.max(counts)
             cmin = np.min(counts)
             if Debug:
@@ -343,20 +334,20 @@ class ImgData:
 
         if opts.get('rotate', False) == True:
             t = time.time()
-            self._images = np.array([rotate_image(img) for img in self._orig])
+            self.images = np.array([rotate_image(img) for img in self.orig])
             if Debug:
                 print "Rotating images took %d seconds" % (time.time() - t)
         else:
-            self._images = self._images.reshape(len(self._images), -1)
-        dim = np.sqrt(self._images.shape[1])
+            self.images = self.images.reshape(len(self.images), -1)
+        dim = np.sqrt(self.images.shape[1])
 
         if opts.get('edges', 'orig') != 'orig':
             t = time.time()
-            edges = edge_laplacian(self._images)
+            edges = edge_laplacian(self.images)
             if opts['edges'] == 'edges':
-                self._images = edges
+                self.images = edges
             elif opts['edges'] == 'merged':
-                self._images = np.column_stack([self._images, edges])
+                self.images = np.column_stack([self.images, edges])
             if Debug:
                 print "Calculating edges took %d seconds" % (time.time() - t)
 
@@ -364,26 +355,26 @@ class ImgData:
             if Debug:
                 print "Adding a row of counts"
             #feature scaling
-            #counts = (counts - cmin) * (np.max(self._images) - np.min(self._images)) / (cmax - cmin)
-            self._images = np.column_stack([self._images, counts.reshape(len(counts), -1)])
+            #counts = (counts - cmin) * (np.max(self.images) - np.min(self.images)) / (cmax - cmin)
+            self.images = np.column_stack([self.images, counts.reshape(len(counts), -1)])
 
         pass
 
     def scale(self, scaler):
-        shape = self._images.shape
+        shape = self.images.shape
         if shape[0] == 0:
             return
 
-        #self._images = scaler.transform(self._images.reshape(shape[0], -1), axis = 1)
+        #self.images = scaler.transform(self.images.reshape(shape[0], -1), axis = 1)
         from sklearn import preprocessing
-        self._images = preprocessing.scale(self._images.reshape(shape[0], -1), axis = 1)
-        self._images = self._images.reshape(shape)
+        self.images = preprocessing.scale(self.images.reshape(shape[0], -1), axis = 1)
+        self.images = self.images.reshape(shape)
 
     def apply_pca(self, pca):
-        if self._images.shape[0] == 0:
+        if self.images.shape[0] == 0:
             return
         
-        self._images = pca.transform(self._images)
+        self.images = pca.transform(self.images)
 
     def read_csv(self, fname, max_entries = -1):
         '''read a csv file containing pixel intensities and (optionally) labels'''
@@ -412,8 +403,8 @@ class ImgData:
                 break
 
             
-        self._orig = np.array(images, dtype = float)
-        self._labels = np.array(labels, dtype = int)
+        self.orig = np.array(images, dtype = float)
+        self.labels = np.array(labels, dtype = int)
         self._config += "csv = %s;" % fname
         pass
     
@@ -446,42 +437,42 @@ class ImgData:
 
         if len(result.shape) == 3:
             #Images are stored as a triplett
-            self._orig = np.array(result, dtype = float)
+            self.orig = np.array(result, dtype = float)
         elif len(result.shape) == 2:
             #Labels are stored as tuples
-            self._labels = np.array(result, dtype = int)
+            self.labels = np.array(result, dtype = int)
         pass
         self._config += ", mnist = %s" % fname
     
 
     def plot_image(self, idx):
-        plot_figure(self._images[idx])
+        plot_figure(self.images[idx])
         pass
 
-    def plot_avg_images(self, status = 'processed'):
-        dim_x = np.sqrt(self._orig.shape[1])
-        dim_y = np.sqrt(self._orig.shape[1])
+    def plot_avgimages(self, status = 'processed'):
+        dim_x = np.sqrt(self.orig.shape[1])
+        dim_y = np.sqrt(self.orig.shape[1])
         if status == 'processed':
-            averages = construct_averages(self._images, self._labels)
-            dim_x = self._images.shape[1] / dim_y
+            averages = construct_averages(self.images, self.labels)
+            dim_x = self.images.shape[1] / dim_y
         elif status == 'orig':
-            averages = construct_averages(self._orig, self._labels)
+            averages = construct_averages(self.orig, self.labels)
 
         l = len(averages)
 
         averages = np.array(averages, dtype = float)
 
-        plot_array(averages.reshape(l, dim_x, dim_y), name = self._name + "_averages_" + status)
+        plot_array(averages.reshape(l, dim_x, dim_y), plot_name = self.name + "_averages_" + status)
 
     def accuracy(self):
-        return sum(self._labels == self._predicted) / len(self._labels)
+        return sum(self.labels == self.predicted) / len(self.labels)
 
     def bad_indices(self):
-        return self._labels != self._predicted
+        return self.labels != self.predicted
 
-    def bad_images(self):
+    def badimages(self):
         ids = self.bad_indices()
-        return self._images[ids], self._labels[ids]
+        return self.images[ids], self.labels[ids]
 
     def subset(self, **args):
         '''Return an ImgData object containing a subset of the data,
@@ -492,39 +483,39 @@ class ImgData:
         vals  - a list of true/false values
         '''
 
-        output = ImgData(self._name, self._config + str(args) + ";")
+        output = ImgData(self.name, self._config + str(args) + ";")
         if 'start' in args and 'end' not in args:
-            args['end'] = len(self._labels)
+            args['end'] = len(self.labels)
         if 'end' in args and 'start' not in args:
             args['start'] = 0
 
         if 'start' in args and 'end' in args:
-            output._orig = self._orig[args['start']:args['end']]
-            output._labels = self._labels[args['start']:args['end']]
-            if len(self._images) > 0:
-                output._images = self._images[args['start']:args['end']]
-            if len(self._predicted) > 0:
-                output._predicted = self._predicted[args['start']:args['end']]
+            output.orig = self.orig[args['start']:args['end']]
+            output.labels = self.labels[args['start']:args['end']]
+            if len(self.images) > 0:
+                output.images = self.images[args['start']:args['end']]
+            if len(self.predicted) > 0:
+                output.predicted = self.predicted[args['start']:args['end']]
         
         if 'ids' in args:
             ids = args['ids']
-            ids = np.array([i in ids for i in range(len(self._orig))])
-            output._orig = self._orig[ids]
-            output._labels = self._labels[ids]
-            if len(self._images) > 0:
-                output._images = self._images[ids]
-            if len(self._predicted) > 0: 
-                output._predicted = self._predicted[ids]
+            ids = np.array([i in ids for i in range(len(self.orig))])
+            output.orig = self.orig[ids]
+            output.labels = self.labels[ids]
+            if len(self.images) > 0:
+                output.images = self.images[ids]
+            if len(self.predicted) > 0: 
+                output.predicted = self.predicted[ids]
 
 
         if 'vals' in args:
             vals = args['vals']
-            output._orig = self._orig[vals]
-            output._labels = self._labels[vals]
-            if len(self._images) > 0:
-                output._images = self._images[vals]
-            if len(self._predicted) > 0: 
-                output._predicted = self._predicted[vals]
+            output.orig = self.orig[vals]
+            output.labels = self.labels[vals]
+            if len(self.images) > 0:
+                output.images = self.images[vals]
+            if len(self.predicted) > 0: 
+                output.predicted = self.predicted[vals]
 
         return output
 
@@ -533,13 +524,13 @@ class Scaler:
         self.transform = None
 
     def train_minmax(self, data, minVal = -1, maxVal = 1):
-        curMin = np.min(data._images)
-        curMax = np.max(data._images)
+        curMin = np.min(data.images)
+        curMax = np.max(data.images)
         self.transform = lambda x: (x - curMin) * (maxVal - minVal) / (curMax - curMin)
 
     def train_scaler(self, data):
         from sklearn import preprocessing
-        scaler = preprocessing.Scaler().fit(data._images)
+        scaler = preprocessing.Scaler().fit(data.images)
         self.transform = scaler.transform        
 
 
@@ -558,7 +549,6 @@ if __name__ == "__main__":
     parser.add_option("--n_test"      , dest = "n_test"     , default = 15000  , type = 'int'  , help = "number of training events to use for testing (bounded by n_train)")
     parser.add_option("--scale"       , dest = "scale"      , default = 'scale' , help = "What scaling to apply: scale uses scikit learn scaler, minmax enforces a range from 0 to 1")    
     parser.add_option("--pca"         , dest = "pca"        , default = -1     , type = 'float', help = "Use PCA to reduce the dimensionality, value sets the minimum fraction of variance explained by the components used")
-    parser.add_option("--lda"         , dest = "lda"        , default = -1     , type = 'float', help = "Use LDA to reduce the dimensionality, value sets the minimum fraction of variance explained by the components used")
     parser.add_option("--edges"       , dest = "edges"      , default = "orig" , help = "Use original image (orig), edge detection (edges), or a combination of both (merged)")
     parser.add_option("--counts"      , dest = "counts"     , default = False  , action = 'store_true', help = "Add a set of features to the image, listing the number of non-zero pixels")
     parser.add_option("--rotate"      , dest = "rotate"     , default = False  , action = 'store_true', help = "Interpolate and then rotate the images along their principal axis")    
@@ -614,9 +604,9 @@ if __name__ == "__main__":
     np.random.shuffle(idxs)
 
     training_data = all_training_data.subset(ids = idxs[:opts.n_train])
-    training_data._name = "Training Data"
+    training_data.name = "Training Data"
     testing_data  = all_training_data.subset(ids = idxs[opts.n_train:opts.n_train+opts.n_test])
-    testing_data._name = "Testing Data"
+    testing_data.name = "Testing Data"
     if Debug:
         print "Subsetting training and testing data took %d seconds" % (time.time() - t)
         print "There are %d training samples" % len(training_data)
@@ -642,23 +632,16 @@ if __name__ == "__main__":
         data.scale(scaler)
 
     if opts.plots:
-        training_data.plot_avg_images('orig')
-        training_data.plot_avg_images('processed')
+        training_data.plot_avgimages('orig')
+        training_data.plot_avgimages('processed')
 
     if (opts.pca > 0):
-        pca, pca_op = explore_pca(training_data._images)
+        pca, pca_op = explore_pca(training_data.images)
         print "%d%% variance explained by %d components (use %d)" % (opts.pca, int(pca_op[opts.pca]), pow(int(np.sqrt(pca_op[opts.pca]))+1, 2))
         pca.n_components = pow(int(np.sqrt(pca_op[opts.pca]))+1, 2)
         for data in (training_data, testing_data, final_data):
             data.apply_pca(pca)
 
-    if (opts.lda > 0):
-        lda = LDA(n_components = 9)
-        lda.fit(training_data._images)
-        for data in (training_data, testing_data):
-            data.apply_pca(lda)
-
-                
     t = time.time()
     classifier = svm.SVC(probability = True, gamma = opts.gamma, C = opts.C, degree = 5)
     if opts.gridsearch:
@@ -673,7 +656,7 @@ if __name__ == "__main__":
         print "Search gammas = %s" % str(gammas)
         print "Search Cs = %s" % str(Cs)
         grid = grid_search.GridSearchCV(estimator = classifier, param_grid = dict(gamma = gammas, C = Cs), n_jobs = 3, verbose = 3)
-        grid.fit(training_data._images, training_data._labels)
+        grid.fit(training_data.images, training_data.labels)
         print "Best score: %f" % grid.best_score
         print "Best gamma: %f" % grid.best_estimator_.gamma
         print "Best C: %f" % grid.best_estimator_.C
@@ -682,7 +665,7 @@ if __name__ == "__main__":
         for A in grid.grid_scores_:
             print A
     else:
-        classifier.fit(training_data._images, training_data._labels)
+        classifier.fit(training_data.images, training_data.labels)
 
     if Debug:
         print "Fitting SVM took %d seconds" % (time.time() - t)
@@ -690,8 +673,8 @@ if __name__ == "__main__":
 
 
     if opts.two_pass:
-        # training_data._predicted = classifier.predict(training_data._images)
-        # training_data._prob = classifier.predict_proba(training_data._images)
+        # training_data.predicted = classifier.predict(training_data.images)
+        # training_data._prob = classifier.predict_proba(training_data.images)
     
         # unsure_data = training_data.subset(vals = np.array(np.max(training_data._prob, axis = 1) < 0.9))
         t = time.time()
@@ -699,11 +682,11 @@ if __name__ == "__main__":
             print "Training two-pass classifier"
         try:
             #classifier2 = svm.SVC(probability = True)
-            #classifier2.fit(unsure_data._images, unsure_data._labels)
+            #classifier2.fit(unsure_data.images, unsure_data.labels)
             # classifier2 = RandomForestClassifier(n_estimators = 200)
-            # classifier2.fit(unsure_data._images, unsure_data._labels)            
+            # classifier2.fit(unsure_data.images, unsure_data.labels)            
             classifier2 = RandomForestClassifier(n_estimators = 500, verbose = 1, n_jobs = -1)
-            classifier2.fit(training_data._images, training_data._labels)            
+            classifier2.fit(training_data.images, training_data.labels)            
 
         except:
             print "SVM2 fit failed"
@@ -711,8 +694,8 @@ if __name__ == "__main__":
         if Debug:
             print "Fitting RF took %d seconds" % (time.time() - t)
             
-        predicted2 = classifier2.predict(unsure_data._images)            
-        print "Accuracy in unsure sample %f" % (sum(predicted2 == unsure_data._labels) / float(len(unsure_data._labels)))
+        predicted2 = classifier2.predict(unsure_data.images)            
+        print "Accuracy in unsure sample %f" % (sum(predicted2 == unsure_data.labels) / float(len(unsure_data.labels)))
         
 
     
@@ -722,59 +705,59 @@ if __name__ == "__main__":
         ("Final", final_data) ,
         ):
         print "+-"*20
-        print "Running on %s" % data._name
+        print "Running on %s" % data.name
         t = time.time()
-        if len(data._images) == 0:
+        if len(data.images) == 0:
             continue
-        data._predicted = classifier.predict(data._images)
-        data._prob = classifier.predict_proba(data._images)
+        data.predicted = classifier.predict(data.images)
+        data._prob = classifier.predict_proba(data.images)
 
         if Debug:
-            print "Accuracy: %f" % (sum(data._predicted == data._labels) / float(len(data._labels)))
+            print "Accuracy: %f" % (sum(data.predicted == data.labels) / float(len(data.labels)))
 
-        if np.max(data._labels) and "Training" not in data._name >= 0:
+        if np.max(data.labels) and "Training" not in data.name >= 0:
             check_mistakes(data)
             print "Classification report for classifier %s:\n%s\n" % (
-                classifier, metrics.classification_report(data._labels, data._predicted))
-            print "Confusion matrix:\n%s" % metrics.confusion_matrix(data._labels, data._predicted)
+                classifier, metrics.classification_report(data.labels, data.predicted))
+            print "Confusion matrix:\n%s" % metrics.confusion_matrix(data.labels, data.predicted)
 
         if opts.two_pass:
             if Debug:
                 print "Applying two-pass classifier"
-            predicted2 = classifier2.predict(data._images)
-            prob2 = classifier2.predict_proba(data._images)
+            predicted2 = classifier2.predict(data.images)
+            prob2 = classifier2.predict_proba(data.images)
 
             data._prob1 = data._prob
-            data._predicted1 = data._predicted
+            data.predicted1 = data.predicted
             data._prob2 = prob2
-            data._predicted2 = predicted2
+            data.predicted2 = predicted2
             
 
             if Debug:
-                print "Two-pass Accuracy on full sample: %f" % (sum(predicted2 == data._labels) / float(len(data._labels)))
+                print "Two-pass Accuracy on full sample: %f" % (sum(predicted2 == data.labels) / float(len(data.labels)))
                 print "Two-pass max prob: %f" % np.max(np.max(prob2, axis = 1))
 
 
             nreplacements = 0
             for i in xrange(len(data)):
                 if np.max(data._prob[i]) < 0.9 and np.max(prob2[i]) > np.max(data._prob[i]):
-                    data._predicted[i] = predicted2[i]
+                    data.predicted[i] = predicted2[i]
                     data._prob[i] = prob2[i]
                     nreplacements += 1
 
             if Debug:
                 print "Replaced %d predictions" % nreplacements
-                print "Two-pass Accuracy: %f" % (sum(data._predicted == data._labels) / float(len(data._labels)))
+                print "Two-pass Accuracy: %f" % (sum(data.predicted == data.labels) / float(len(data.labels)))
                 
-            if np.max(data._labels) >= 0:
+            if np.max(data.labels) >= 0:
                 check_mistakes(data)
 
         
         if Debug:
             print "Applying predictions took %d seconds" % (time.time() - t)
         
-        if final_data._predicted.shape[0] > 0:
-            s = "\n".join(["%d" % f for f in final_data._predicted])
+        if final_data.predicted.shape[0] > 0:
+            s = "\n".join(["%d" % f for f in final_data.predicted])
             open('final.csv', 'w').write(s)
                  
     plt.show()
